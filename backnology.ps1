@@ -1,3 +1,12 @@
+# import posh ssh
+try {
+    Import-Module "D:\progs\Posh-SSH\Posh-SSH\Posh-SSH.psd1"
+    Write-Host "Модуль Posh-SSH загружен"
+} catch {
+    Write-Host "ОШИБКА: Не удалось загрузить модуль Posh-SSH"
+    Write-Host "Проверьте путь: D:\progs\Posh-SSH\Posh-SSH\Posh-SSH.psd1"
+    exit 1
+}
 # config
 $XpenologyIP = ""
 $Port = 
