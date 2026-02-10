@@ -7,10 +7,11 @@ try {
     Write-Host "Проверьте путь: D:\progs\Posh-SSH\Posh-SSH\Posh-SSH.psd1"
     exit 1
 }
+
 # config
 $XpenologyIP = ""
 $Port = 
-$Username = "r"
+$Username = ""
 $Password = ""
 
 # paths
@@ -30,7 +31,7 @@ function Write-Log {
     Write-Host $logMessage
 }
 
-Write-Log "Начало передачи файлов"
+Write-Log "=== Начало передачи файлов ==="
 
 try {
     # sftp session
@@ -65,15 +66,14 @@ try {
         foreach ($file in $files) {
             $localFile = $file.FullName
             $remoteFile = "$RemoteFolder/$($file.Name)"
-            $fileSizeMB = [math]::Round($file.Length / 1MB, 2)
+            $fileSizeMB = [math]::Round($file.Length / 1kb, 2)
             
-            Write-Log "Отправка: $($file.Name) ($fileSizeMB MB)..."
+            Write-Log "Отправка: $($file.Name) ($fileSizeMB kb)..."
             
             try {
                 Set-SFTPItem -SessionId $sftpSession.SessionId `
                             -Path $localFile `
-                            -Destination $remoteFile `
-                
+                            -Destination $remoteFile
                 Write-Log " Успешно отправлен: $($file.Name)"
                       
                 
