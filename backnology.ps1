@@ -64,7 +64,6 @@ try {
                 Set-SFTPItem -SessionId $sftpSession.SessionId `
                             -Path $localFile `
                             -Destination $remoteFile `
-                            -Overwrite
                 
                 Write-Log " Успешно отправлен: $($file.Name)"
                       
