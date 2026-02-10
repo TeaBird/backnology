@@ -16,7 +16,7 @@ $Password = ""
 
 # paths
 $SourceFolder = "D:\TEST_FOLDER"
-$RemoteFolder = "/volume1/Backup1/TEST_FOLDER"
+$RemoteFolder = "/Backup1/TEST_FOLDER"
 
 # logs
 $LogFile = "C:\BackupScripts\transfer_log.txt"
@@ -71,12 +71,11 @@ try {
             Write-Log "Отправка: $($file.Name) ($fileSizeMB kb)..."
             
             try {
-                Set-SFTPItem -SessionId $sftpSession.SessionId `
-                            -Path $localFile `
-                            -Destination $remoteFile
-                Write-Log " Успешно отправлен: $($file.Name)"
-                      
-                
+               Set-SFTPItem -SessionId $sftpSession.SessionId `
+             -Path $localFile `
+             -Destination $RemoteFolder `
+             -Force
+                       
             } catch {
                 Write-Log " Ошибка отправки $($file.Name): $_"
             }
