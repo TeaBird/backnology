@@ -15,7 +15,10 @@ $Username = ""
 $Password = ""
 
 # paths
-$SourceFolder = "D:\TEST_FOLDER"
+$SourceFolders = @(
+    "D:\TEST_FOLDER",
+    "D:\ARCHIVE"
+)
 $RemoteFolder = "/Backup1/TEST_FOLDER"
 
 $LogFile = "C:\BackupScripts\backup_log.txt"
@@ -80,15 +83,26 @@ while ($true) {
                 }
             }
 
-        # поиск последнего файла
-        $latestFile = Get-ChildItem -Path $SourceFolder -File |
-                      Sort-Object LastWriteTime -Descending |
-                      Select-Object -First 1
+         # перебор всех исходных папок
+        foreach ($SourceFolder in $SourceFolders) {
 
-        if (-not $latestFile) {
-            Write-Log "нет файлов для передачи."
-        }
-        else {
+            Write-Log "проверка папки: $SourceFolder"
+
+            if (-not (Test-Path $SourceFolder)) {
+                Write-Log "папка не существует: $SourceFolder"
+                continue
+            }
+
+            # поиск последнего файла
+            $latestFile = Get-ChildItem -Path $SourceFolder -File |
+                          Sort-Object LastWriteTime -Descending |
+                          Select-Object -First 1
+
+            if (-not $latestFile) {
+                Write-Log "в папке нет файлов: $SourceFolder"
+                continue
+            }
+
             $fileSizeKB = [math]::Round($latestFile.Length / 1KB, 2)
             Write-Log "отправка последнего файла: $($latestFile.Name) ($fileSizeKB KB)"
 
@@ -97,10 +111,8 @@ while ($true) {
                              -Path $latestFile.FullName `
                              -Destination $RemoteFolder `
                              -Force
-
-                Write-Log "файл успешно отправлен."
-            }
-            catch {
+                Write-Log "файл успешно отправлен"
+            } catch {
                 Write-Log "ошибка отправки файла: $($_.Exception.Message)"
             }
         }
