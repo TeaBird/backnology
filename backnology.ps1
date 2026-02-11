@@ -68,8 +68,8 @@ function Send-TelegramMessage {
     param(
         [string]$Message
     )
-    $BotToken = "8461617617:AAEis91c1hz9Goouhag4zDaTZ_Zg-FxJEY8"
-    $ChatId = "540824120"
+    $BotToken = ""
+    $ChatId = ""
 
     $url = "https://api.telegram.org/bot$BotToken/sendMessage"
     $body = @{
