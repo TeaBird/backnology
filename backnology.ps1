@@ -8,9 +8,8 @@ try {
 }
 
 # config 
-
 $XpenologyIP = ""
-$Port =
+$Port = 
 $Username = Read-Host "Введите имя пользователя для SFTP"
 $Password = Read-Host "Введите пароль для SFTP" -AsSecureString
 
@@ -19,7 +18,7 @@ $SourceFolders = @(
     "D:\TEST_FOLDER",
     "D:\ARCHIVE"
 )
-$RemoteFolder = "/Backup1/TEST_FOLDER"
+$RemoteRoot = "/Backup1/TEST_FOLDER"
 
 $LogFile = "C:\BackupScripts\backup_log.txt"
 $ErrorActionPreference = "Stop"
@@ -36,7 +35,7 @@ function Write-Log {
 # main_loop
 while ($true) {
 
-    Write-Log "передача файлов"
+    Write-Log "старт цикла"
 
     try {
 
@@ -45,90 +44,92 @@ while ($true) {
 
         # Подключение
         Write-Log "подключение к $XpenologyIP`:$Port..."
-
         $sessionParams = @{
-            ComputerName     = $XpenologyIP
-            Port             = $Port
-            Credential       = $credential
-            AcceptKey        = $true
+            ComputerName      = $XpenologyIP
+            Port              = $Port
+            Credential        = $credential
+            AcceptKey         = $true
             ConnectionTimeout = 60000
         }
-
         $sftpSession = New-SFTPSession @sessionParams
 
         if (-not $sftpSession.Connected) {
             throw "не удалось подключиться к SFTP серверу"
         }
 
-        Write-Log "успешное подключение session ID: $($sftpSession.SessionId)"
+        Write-Log "успешное подключение. Session ID: $($sftpSession.SessionId)"
 
-        # проверка удаленной папки
+        # проверка корневой папки на сервере
         try {
-            Get-SFTPChildItem -SessionId $sftpSession.SessionId -Path $RemoteFolder -ErrorAction Stop | Out-Null
-            Write-Log "папка существует: $RemoteFolder"
-            }
-        catch {
-            Write-Log "папка не существует. Создаю: $RemoteFolder"
-        try {
-            New-SFTPItem -SessionId $sftpSession.SessionId `
-                     -Path $RemoteFolder `
-                     -ItemType Directory `
+            Get-SFTPChildItem -SessionId $sftpSession.SessionId -Path $RemoteRoot -ErrorAction Stop | Out-Null
+            Write-Log "корневая папка существует: $RemoteRoot"
+        } catch {
+            Write-Log "корневая папка не существует. Создаю: $RemoteRoot"
+            New-SFTPItem -SessionId $sftpSession.SessionId -Path $RemoteRoot -ItemType Directory | Out-Null
+            Write-Log "корневая папка создана: $RemoteRoot"
+        }
 
-            Write-Log "папка создана: $RemoteFolder"
+        # перебор всех исходных папок
+        foreach ($RootFolder in $SourceFolders) {
+
+            # проверка существования локальной папки
+            if (-not (Test-Path $RootFolder)) {
+                Write-Log "локальная папка не существует: $RootFolder"
+                continue
             }
-        catch {
-            Write-Log "не удалось создать папку ${RemoteFolder}: $($_.Exception.Message)"
-        throw
+
+            # перебор подпапок
+            $SubFolders = Get-ChildItem -Path $RootFolder -Directory
+            foreach ($SubFolder in $SubFolders) {
+                Write-Log "обрабатываю папку: $($SubFolder.FullName)"
+
+                # поиск последнего файла в подпапке
+                $latestFile = Get-ChildItem -Path $SubFolder.FullName -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+                if (-not $latestFile) {
+                    Write-Log "нет файлов в папке: $($SubFolder.FullName)"
+                    continue
                 }
-            }
 
-         # перебор всех исходных папок
-        foreach ($SourceFolder in $SourceFolders) {
+                $fileSizeKB = [math]::Round($latestFile.Length / 1KB, 2)
+                Write-Log "последний файл: $($latestFile.Name) ($fileSizeKB KB)"
 
-            Write-Log "проверка папки: $SourceFolder"
+                # формируем путь на сервере
+                $remoteFolder = "$RemoteRoot/$($SubFolder.Name)"
 
-            if (-not (Test-Path $SourceFolder)) {
-                Write-Log "папка не существует: $SourceFolder"
-                continue
-            }
+                # проверка существования папки на сервере, если нет – создаём
+                try {
+                    Get-SFTPChildItem -SessionId $sftpSession.SessionId -Path $remoteFolder -ErrorAction Stop | Out-Null
+                    Write-Log "папка существует: $remoteFolder"
+                } catch {
+                    Write-Log "папка не существует. Создаю: $remoteFolder"
+                    New-SFTPItem -SessionId $sftpSession.SessionId -Path $remoteFolder -ItemType Directory | Out-Null
+                    Write-Log "папка создана: $remoteFolder"
+                }
 
-            # поиск последнего файла
-            $latestFile = Get-ChildItem -Path $SourceFolder -File |
-                          Sort-Object LastWriteTime -Descending |
-                          Select-Object -First 1
-
-            if (-not $latestFile) {
-                Write-Log "в папке нет файлов: $SourceFolder"
-                continue
-            }
-
-            $fileSizeKB = [math]::Round($latestFile.Length / 1KB, 2)
-            Write-Log "отправка последнего файла: $($latestFile.Name) ($fileSizeKB KB)"
-
-            try {
-                Set-SFTPItem -SessionId $sftpSession.SessionId `
-                             -Path $latestFile.FullName `
-                             -Destination $RemoteFolder `
-                             -Force
-                Write-Log "файл успешно отправлен"
-            } catch {
-                Write-Log "ошибка отправки файла: $($_.Exception.Message)"
+                # отправка файла
+                try {
+                    Set-SFTPItem -SessionId $sftpSession.SessionId `
+                                 -Path $latestFile.FullName `
+                                 -Destination $remoteFolder `
+                                 -Force
+                    Write-Log "файл успешно отправлен: $($latestFile.Name) -> $remoteFolder"
+                } catch {
+                    Write-Log "ошибка отправки файла: $($_.Exception.Message)"
+                }
             }
         }
 
-        # Закрытие сессии
+        # закрытие сессии
         Remove-SFTPSession -SessionId $sftpSession.SessionId | Out-Null
         Write-Log "сессия закрыта"
 
-    }
-    catch {
+    } catch {
         Write-Log "критическая ошибка: $($_.Exception.Message)"
-    }
-    finally {
+    } finally {
         Write-Log "передача завершена"
     }
 
-    # Ожидание 7 дней
-    Write-Log "ожидание 7 дней до следующего запуска..."
-    Start-Sleep -Seconds 604800 # 7days
+    $NextRun = (Get-Date).AddDays(7)
+    Write-Log "Ожидание 7 дней до следующего запуска... Следующий запуск: $($NextRun.ToString('yyyy-MM-dd HH:mm:ss'))"
+    Start-Sleep -Seconds 604800 # 7 дней
 }
