@@ -8,12 +8,12 @@ try {
 }
 
 # config 
-
 $XpenologyIP = ""
 $Port = 
 $Username = ""
 $Password = ""
 
+# paths
 $SourceFolder = "D:\TEST_FOLDER"
 $RemoteFolder = "/Backup1/TEST_FOLDER"
 
@@ -105,7 +105,6 @@ while ($true) {
         Write-Log "передача завершена"
     }
 
-    # Ожидание 7 дней
     Write-Log "ожидание 7 дней до следующего запуска..."
     Start-Sleep -Seconds 604800 # 7days
 }
