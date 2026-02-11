@@ -1,28 +1,26 @@
-# import posh ssh
+# import
 try {
     Import-Module "D:\progs\Posh-SSH\Posh-SSH\Posh-SSH.psd1"
     Write-Host "Модуль Posh-SSH загружен"
 } catch {
     Write-Host "ОШИБКА: Не удалось загрузить модуль Posh-SSH"
-    Write-Host "Проверьте путь: D:\progs\Posh-SSH\Posh-SSH\Posh-SSH.psd1"
     exit 1
 }
 
-# config
+# config 
+
 $XpenologyIP = ""
 $Port = 
 $Username = ""
 $Password = ""
 
-# paths
 $SourceFolder = "D:\TEST_FOLDER"
 $RemoteFolder = "/Backup1/TEST_FOLDER"
 
-# logs
-$LogFile = "C:\BackupScripts\transfer_log.txt"
+$LogFile = "C:\BackupScripts\backup_log.txt"
 $ErrorActionPreference = "Stop"
 
-# logs function
+# log
 function Write-Log {
     param([string]$Message)
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
@@ -31,64 +29,83 @@ function Write-Log {
     Write-Host $logMessage
 }
 
-Write-Log "=== Начало передачи файлов ==="
+# main_loop
+while ($true) {
 
-try {
-    # sftp session
-    Write-Log "Подключаюсь к $XpenologyIP`:$Port..."
-    
-    $sessionParams = @{
-        ComputerName = $XpenologyIP
-        Port = $Port
-        Credential = (New-Object System.Management.Automation.PSCredential($Username, 
-                    (ConvertTo-SecureString $Password -AsPlainText -Force)))
-        AcceptKey = $true
-		ConnectionTimeout = 60000
-    }
-    
-    $sftpSession = New-SFTPSession @sessionParams
-    
-    if (-not $sftpSession.Connected) {
-        throw "Не удалось подключиться к SFTP серверу"
-    }
-    
-    Write-Log "Успешное подключение. Session ID: $($sftpSession.SessionId)"
-    
-    # 5. file check
-    $files = Get-ChildItem -Path $SourceFolder -File
-    
-    if ($files.Count -eq 0) {
-        Write-Log "Нет файлов для передачи в $SourceFolder"
-    } else {
-        Write-Log "Найдено файлов для передачи: $($files.Count)"
-        
-        # 6. recursive file sending
-        foreach ($file in $files) {
-            $localFile = $file.FullName
-            $remoteFile = "$RemoteFolder/$($file.Name)"
-            $fileSizeMB = [math]::Round($file.Length / 1kb, 2)
-            
-            Write-Log "Отправка: $($file.Name) ($fileSizeMB kb)..."
-            
+    Write-Log "передача файлов"
+
+    try {
+
+        # Создание credential
+        $securePassword = ConvertTo-SecureString $Password -AsPlainText -Force
+        $credential = New-Object System.Management.Automation.PSCredential ($Username, $securePassword)
+
+        # Подключение
+        Write-Log "подключение к $XpenologyIP`:$Port..."
+
+        $sessionParams = @{
+            ComputerName     = $XpenologyIP
+            Port             = $Port
+            Credential       = $credential
+            AcceptKey        = $true
+            ConnectionTimeout = 60000
+        }
+
+        $sftpSession = New-SFTPSession @sessionParams
+
+        if (-not $sftpSession.Connected) {
+            throw "не удалось подключиться к SFTP серверу"
+        }
+
+        Write-Log "успешное подключение session ID: $($sftpSession.SessionId)"
+
+        # folder_check
+        try {
+            $null = Get-SFTPChildItem -SessionId $sftpSession.SessionId -Path $RemoteFolder
+        } catch {
+            Write-Log "папка не существует. создание"
+            New-SFTPItem -SessionId $sftpSession.SessionId -Path $RemoteFolder -ItemType Directory | Out-Null
+            Write-Log "папка создана."
+        }
+
+        # поиск последнего файла
+        $latestFile = Get-ChildItem -Path $SourceFolder -File |
+                      Sort-Object LastWriteTime -Descending |
+                      Select-Object -First 1
+
+        if (-not $latestFile) {
+            Write-Log "нет файлов для передачи."
+        }
+        else {
+            $fileSizeKB = [math]::Round($latestFile.Length / 1KB, 2)
+            Write-Log "отправка последнего файла: $($latestFile.Name) ($fileSizeKB KB)"
+
             try {
-               Set-SFTPItem -SessionId $sftpSession.SessionId `
-             -Path $localFile `
-             -Destination $RemoteFolder `
-             -Force
-                       
-            } catch {
-                Write-Log " Ошибка отправки $($file.Name): $_"
+                Set-SFTPItem -SessionId $sftpSession.SessionId `
+                             -Path $latestFile.FullName `
+                             -Destination $RemoteFolder `
+                             -Force
+
+                Write-Log "файл успешно отправлен."
+            }
+            catch {
+                Write-Log "ошибка отправки файла: $($_.Exception.Message)"
             }
         }
+
+        # Закрытие сессии
+        Remove-SFTPSession -SessionId $sftpSession.SessionId | Out-Null
+        Write-Log "сессия закрыта"
+
     }
-    
-    # 7. close session
-    Remove-SFTPSession -SessionId $sftpSession.SessionId | Out-Null
-    Write-Log "Сессия закрыта"
-    
-} catch {
-    Write-Log "Критическая ошибка: $_"
-    Write-Log $_.Exception.Message
-} finally {
-    Write-Log "Передача завершена"
+    catch {
+        Write-Log "критическая ошибка: $($_.Exception.Message)"
+    }
+    finally {
+        Write-Log "передача завершена"
+    }
+
+    # Ожидание 7 дней
+    Write-Log "ожидание 7 дней до следующего запуска..."
+    Start-Sleep -Seconds 604800 # 7days
 }
