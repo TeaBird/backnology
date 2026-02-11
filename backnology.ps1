@@ -10,9 +10,9 @@ try {
 # config 
 
 $XpenologyIP = ""
-$Port = 
-$Username = ""
-$Password = ""
+$Port =
+$Username = Read-Host "Введите имя пользователя для SFTP"
+$Password = Read-Host "Введите пароль для SFTP" -AsSecureString
 
 # paths
 $SourceFolders = @(
@@ -41,8 +41,7 @@ while ($true) {
     try {
 
         # Создание credential
-        $securePassword = ConvertTo-SecureString $Password -AsPlainText -Force
-        $credential = New-Object System.Management.Automation.PSCredential ($Username, $securePassword)
+        $credential = New-Object System.Management.Automation.PSCredential ($Username, $Password)
 
         # Подключение
         Write-Log "подключение к $XpenologyIP`:$Port..."
