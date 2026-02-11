@@ -26,7 +26,10 @@
 
 ```powershell
 # Paths
-$SourceFolder = "D:\TEST_FOLDER"
+$SourceFolders = @(
+    "D:\TEST_FOLDER",
+    "D:\ARCHIVE"
+)
 $RemoteFolder = "/Backup1/TEST_FOLDER"
 
 # Error handling
