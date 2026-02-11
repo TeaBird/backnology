@@ -8,8 +8,8 @@ try {
 }
 
 # config 
-$XpenologyIP = ""
-$Port = 
+$XpenologyIP = "192.168.11.14"
+$Port = 33878
 $Username = Read-Host "Введите имя пользователя для SFTP"
 $Password = Read-Host "Введите пароль для SFTP" -AsSecureString
 
@@ -34,14 +34,12 @@ switch ($ModeChoice) {
 Write-Host "Выбран режим: $Mode"
 Write-Host ""
 
-
 # paths
 $SourceFolders = @(
     "D:\TEST_FOLDER",
     "D:\ARCHIVE"
 )
 $RemoteRoot = "/Backup1/TEST_FOLDER"
-
 $LogFile = "C:\backnology\backup_log.txt"
 $ErrorActionPreference = "Stop"
 
@@ -53,9 +51,9 @@ function Write-Log {
     Add-Content -Path $LogFile -Value $logMessage
     Write-Host $logMessage
 }
+
 function Test-FileLocked {
     param([string]$Path)
-
     try {
         $stream = [System.IO.File]::Open($Path, 'Open', 'Read', 'None')
         $stream.Close()
@@ -66,17 +64,35 @@ function Test-FileLocked {
     }
 }
 
+function Send-TelegramMessage {
+    param(
+        [string]$Message
+    )
+    $BotToken = "8461617617:AAEis91c1hz9Goouhag4zDaTZ_Zg-FxJEY8"
+    $ChatId = "540824120"
+
+    $url = "https://api.telegram.org/bot$BotToken/sendMessage"
+    $body = @{
+        chat_id = $ChatId
+        text    = $Message
+        parse_mode = "HTML"
+    }
+
+    try {
+        Invoke-RestMethod -Uri $url -Method Post -Body $body
+    } catch {
+        Write-Host "Не удалось отправить сообщение в Telegram: $($_.Exception.Message)"
+    }
+}
+
 # main_loop
 while ($true) {
 
     Write-Log "старт цикла"
     Write-Log "режим работы: $Mode"
+
     try {
-
-        # Создание credential
         $credential = New-Object System.Management.Automation.PSCredential ($Username, $Password)
-
-        # Подключение
         Write-Log "подключение к $XpenologyIP`:$Port..."
         $sessionParams = @{
             ComputerName      = $XpenologyIP
@@ -104,137 +120,127 @@ while ($true) {
         }
 
         # перебор всех исходных папок
-       # выбор логики работы
-if ($Mode -eq "simple") {
+        if ($Mode -eq "simple") {
+            Write-Log "режим simple: последний файл из каждой папки массива"
 
-    Write-Log "режим simple: последний файл из каждой папки массива"
+            foreach ($RootFolder in $SourceFolders) {
+                if (-not (Test-Path $RootFolder)) {
+                    Write-Log "локальная папка не существует: $RootFolder"
+                    continue
+                }
 
-    foreach ($RootFolder in $SourceFolders) {
+                $latestFile = Get-ChildItem -Path $RootFolder -File |
+                              Sort-Object LastWriteTime -Descending |
+                              Select-Object -First 1
 
-        if (-not (Test-Path $RootFolder)) {
-            Write-Log "локальная папка не существует: $RootFolder"
-            continue
-        }
+                if (-not $latestFile) {
+                    Write-Log "нет файлов в папке: $RootFolder"
+                    continue
+                }
 
-        $latestFile = Get-ChildItem -Path $RootFolder -File |
-                      Sort-Object LastWriteTime -Descending |
-                      Select-Object -First 1
+                $fileSizeKB = [math]::Round($latestFile.Length / 1KB, 2)
+                Write-Log "последний файл: $($latestFile.Name) ($fileSizeKB KB)"
+                $remoteFolder = "$RemoteRoot/$([System.IO.Path]::GetFileName($RootFolder))"
 
-        if (-not $latestFile) {
-            Write-Log "нет файлов в папке: $RootFolder"
-            continue
-        }
+                try { Get-SFTPChildItem -SessionId $sftpSession.SessionId -Path $remoteFolder -ErrorAction Stop | Out-Null }
+                catch { New-SFTPItem -SessionId $sftpSession.SessionId -Path $remoteFolder -ItemType Directory | Out-Null }
 
-        $fileSizeKB = [math]::Round($latestFile.Length / 1KB, 2)
-        Write-Log "последний файл: $($latestFile.Name) ($fileSizeKB KB)"
+                # попытки передачи с проверкой блокировки
+                $maxAttempts = 10
+                $attempt = 0
+                $waitSeconds = 30
 
-        $remoteFolder = "$RemoteRoot/$([System.IO.Path]::GetFileName($RootFolder))"
+                while (Test-FileLocked $latestFile.FullName -and $attempt -lt $maxAttempts) {
+                    Write-Log "файл занят другим процессом. Ожидание $waitSeconds сек... (попытка $($attempt+1) из $maxAttempts)"
+                    Start-Sleep -Seconds $waitSeconds
+                    $attempt++
+                }
 
-        # создаём папку если нет
-        try {
-            Get-SFTPChildItem -SessionId $sftpSession.SessionId -Path $remoteFolder -ErrorAction Stop | Out-Null
-        } catch {
-            New-SFTPItem -SessionId $sftpSession.SessionId -Path $remoteFolder -ItemType Directory | Out-Null
-        }
+                if (Test-FileLocked $latestFile.FullName) {
+                    Write-Log "файл так и не освободился. Пропускаю: $($latestFile.Name)"
+                    Send-TelegramMessage " Бэкап не выполнен: $($latestFile.FullName) — файл занят"
+                    continue
+                }
 
-        $maxAttempts = 10
-        $attempt = 0
-        $waitSeconds = 30
-
-        while (Test-FileLocked $latestFile.FullName -and $attempt -lt $maxAttempts) {
-    Write-Log "файл занят другим процессом. Ожидание $waitSeconds сек... (попытка $($attempt+1) из $maxAttempts)"
-    Start-Sleep -Seconds $waitSeconds
-    $attempt++
-        }
-
-        if (Test-FileLocked $latestFile.FullName) {
-        Write-Log "файл так и не освободился. Пропускаю: $($latestFile.Name)"
-        continue
-        }
-
-        # отправка файла
-        try {
-            Set-SFTPItem -SessionId $sftpSession.SessionId `
-                         -Path $latestFile.FullName `
-                         -Destination $remoteFolder `
-                         -Force
-
-            Write-Log "файл успешно отправлен: $($latestFile.Name) -> $remoteFolder"
-        } catch {
-            Write-Log "ошибка отправки файла: $($_.Exception.Message)"
-        }
-    }
-}
-else {
-
-    Write-Log "режим recursive: последний файл из каждой подпапки"
-
-    foreach ($RootFolder in $SourceFolders) {
-
-        if (-not (Test-Path $RootFolder)) {
-            Write-Log "локальная папка не существует: $RootFolder"
-            continue
-        }
-
-        $SubFolders = Get-ChildItem -Path $RootFolder -Directory
-
-        foreach ($SubFolder in $SubFolders) {
-
-            Write-Log "обрабатываю папку: $($SubFolder.FullName)"
-
-            $latestFile = Get-ChildItem -Path $SubFolder.FullName -File |
-                          Sort-Object LastWriteTime -Descending |
-                          Select-Object -First 1
-
-            if (-not $latestFile) {
-                Write-Log "нет файлов в папке: $($SubFolder.FullName)"
-                continue
+                try {
+                    Set-SFTPItem -SessionId $sftpSession.SessionId `
+                                 -Path $latestFile.FullName `
+                                 -Destination $remoteFolder `
+                                 -Force
+                    Write-Log "файл успешно отправлен: $($latestFile.Name) -> $remoteFolder"
+                    Send-TelegramMessage " Бэкап выполнен: $($latestFile.FullName) -> $remoteFolder"
+                } catch {
+                    Write-Log "ошибка отправки файла: $($_.Exception.Message)"
+                    Send-TelegramMessage " Бэкап не выполнен: $($latestFile.FullName) — ошибка: $($_.Exception.Message)"
+                }
             }
 
-            $fileSizeKB = [math]::Round($latestFile.Length / 1KB, 2)
-            Write-Log "последний файл: $($latestFile.Name) ($fileSizeKB KB)"
-            $maxAttempts = 10
-            $attempt = 0
-            $waitSeconds = 30
+        } else {
+            Write-Log "режим recursive: последний файл из каждой подпапки"
 
-            while (Test-FileLocked $latestFile.FullName -and $attempt -lt $maxAttempts) {
-            Write-Log "файл занят другим процессом. Ожидание $waitSeconds сек... (попытка $($attempt+1) из $maxAttempts)"
-            Start-Sleep -Seconds $waitSeconds
-            $attempt++
-            }
+            foreach ($RootFolder in $SourceFolders) {
+                if (-not (Test-Path $RootFolder)) {
+                    Write-Log "локальная папка не существует: $RootFolder"
+                    continue
+                }
 
-            if (Test-FileLocked $latestFile.FullName) {
-            Write-Log "файл так и не освободился. Пропускаю: $($latestFile.Name)"
-            continue
-            }
+                $SubFolders = Get-ChildItem -Path $RootFolder -Directory
 
-            $remoteFolder = "$RemoteRoot/$($SubFolder.Name)"
+                foreach ($SubFolder in $SubFolders) {
+                    Write-Log "обрабатываю папку: $($SubFolder.FullName)"
+                    $latestFile = Get-ChildItem -Path $SubFolder.FullName -File |
+                                  Sort-Object LastWriteTime -Descending |
+                                  Select-Object -First 1
 
-            try {
-                Get-SFTPChildItem -SessionId $sftpSession.SessionId -Path $remoteFolder -ErrorAction Stop | Out-Null
-            } catch {
-                New-SFTPItem -SessionId $sftpSession.SessionId -Path $remoteFolder -ItemType Directory | Out-Null
-            }
+                    if (-not $latestFile) {
+                        Write-Log "нет файлов в папке: $($SubFolder.FullName)"
+                        continue
+                    }
 
-            try {
-                Set-SFTPItem -SessionId $sftpSession.SessionId `
-                             -Path $latestFile.FullName `
-                             -Destination $remoteFolder `
-                             -Force
-                Write-Log "файл успешно отправлен: $($latestFile.Name) -> $remoteFolder"
-            } catch {
-                Write-Log "ошибка отправки файла: $($_.Exception.Message)"
+                    $fileSizeKB = [math]::Round($latestFile.Length / 1KB, 2)
+                    Write-Log "последний файл: $($latestFile.Name) ($fileSizeKB KB)"
+                    $remoteFolder = "$RemoteRoot/$($SubFolder.Name)"
+
+                    try { Get-SFTPChildItem -SessionId $sftpSession.SessionId -Path $remoteFolder -ErrorAction Stop | Out-Null }
+                    catch { New-SFTPItem -SessionId $sftpSession.SessionId -Path $remoteFolder -ItemType Directory | Out-Null }
+
+                    $maxAttempts = 10
+                    $attempt = 0
+                    $waitSeconds = 30
+
+                    while (Test-FileLocked $latestFile.FullName -and $attempt -lt $maxAttempts) {
+                        Write-Log "файл занят другим процессом. Ожидание $waitSeconds сек... (попытка $($attempt+1) из $maxAttempts)"
+                        Start-Sleep -Seconds $waitSeconds
+                        $attempt++
+                    }
+
+                    if (Test-FileLocked $latestFile.FullName) {
+                        Write-Log "файл так и не освободился. Пропускаю: $($latestFile.Name)"
+                        Send-TelegramMessage " Бэкап не выполнен: $($latestFile.FullName) — файл занят"
+                        continue
+                    }
+
+                    try {
+                        Set-SFTPItem -SessionId $sftpSession.SessionId `
+                                     -Path $latestFile.FullName `
+                                     -Destination $remoteFolder `
+                                     -Force
+                        Write-Log "файл успешно отправлен: $($latestFile.Name) -> $remoteFolder"
+                        Send-TelegramMessage " Бэкап выполнен: $($latestFile.FullName) -> $remoteFolder"
+                    } catch {
+                        Write-Log "ошибка отправки файла: $($_.Exception.Message)"
+                        Send-TelegramMessage " Бэкап не выполнен: $($latestFile.FullName) — ошибка: $($_.Exception.Message)"
+                    }
+                }
             }
         }
-    }
-}
 
-        # закрытие сессии
         Remove-SFTPSession -SessionId $sftpSession.SessionId | Out-Null
         Write-Log "сессия закрыта"
 
     } catch {
         Write-Log "критическая ошибка: $($_.Exception.Message)"
+        Send-TelegramMessage " Критическая ошибка бэкапа: $($_.Exception.Message)"
     } finally {
         Write-Log "передача завершена"
     }
