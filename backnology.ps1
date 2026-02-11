@@ -42,7 +42,7 @@ $SourceFolders = @(
 )
 $RemoteRoot = "/Backup1/TEST_FOLDER"
 
-$LogFile = "C:\BackupScripts\backup_log.txt"
+$LogFile = "C:\backnology\backup_log.txt"
 $ErrorActionPreference = "Stop"
 
 # log
