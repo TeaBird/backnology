@@ -8,8 +8,8 @@ try {
 }
 
 # config 
-$XpenologyIP = "192.168.11.14"
-$Port = 33878
+$XpenologyIP = ""
+$Port = 
 $Username = Read-Host "Введите имя пользователя для SFTP"
 $Password = Read-Host "Введите пароль для SFTP" -AsSecureString
 
