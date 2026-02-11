@@ -31,3 +31,8 @@ $RemoteFolder = "/Backup1/TEST_FOLDER"
 
 # Error handling
 $ErrorActionPreference = "Stop"
+```
+
+## Развертка
+
+https://teabird.github.io/documentation/backnology.html
