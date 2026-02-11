@@ -1,15 +1,31 @@
 # backnology
-posh_ssh + xpenology + backups script
 
-Скрипт для отправки бекапов на удаленный хост по fstp через Posh-Ssh
+**Posh-SSH + Xpenology + Backup Script**
 
-#Конфигурация для хостов:
-'
-paths:
+Скрипт для автоматической отправки резервных копий на удалённый хост по SFTP через модуль Posh-SSH.
+
+---
+
+## Описание
+
+Скрипт выполняет:
+
+- подключение к удалённому серверу (Xpenology / NAS)
+- передачу файлов по SFTP
+- логирование всех операций
+- (опционально) запуск в цикле раз в 7 дней
+- отправку только последнего по времени файла
+
+---
+
+##  Конфигурация
+
+Основные параметры:
+
+```powershell
+# Paths
 $SourceFolder = "D:\TEST_FOLDER"
 $RemoteFolder = "/Backup1/TEST_FOLDER"
+
+# Error handling
 $ErrorActionPreference = "Stop"
-'
-#Необходимые компоненты:
-Powershell v5.1+
-.Net Framework v4.8+
