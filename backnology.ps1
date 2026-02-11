@@ -1,6 +1,6 @@
 # import
 try {
-    Import-Module "D:\progs\Posh-SSH\Posh-SSH\Posh-SSH.psd1"
+    Import-Module "C:\backnology\Posh-SSH.psd1"
     Write-Host "Модуль Posh-SSH загружен"
 } catch {
     Write-Host "ОШИБКА: Не удалось загрузить модуль Posh-SSH"
@@ -8,6 +8,7 @@ try {
 }
 
 # config 
+
 $XpenologyIP = ""
 $Port = 
 $Username = ""
@@ -59,14 +60,25 @@ while ($true) {
 
         Write-Log "успешное подключение session ID: $($sftpSession.SessionId)"
 
-        # folder_check
+        # проверка удаленной папки
         try {
-            $null = Get-SFTPChildItem -SessionId $sftpSession.SessionId -Path $RemoteFolder
-        } catch {
-            Write-Log "папка не существует. создание"
-            New-SFTPItem -SessionId $sftpSession.SessionId -Path $RemoteFolder -ItemType Directory | Out-Null
-            Write-Log "папка создана."
-        }
+            Get-SFTPChildItem -SessionId $sftpSession.SessionId -Path $RemoteFolder -ErrorAction Stop | Out-Null
+            Write-Log "папка существует: $RemoteFolder"
+            }
+        catch {
+            Write-Log "папка не существует. Создаю: $RemoteFolder"
+        try {
+            New-SFTPItem -SessionId $sftpSession.SessionId `
+                     -Path $RemoteFolder `
+                     -ItemType Directory `
+
+            Write-Log "папка создана: $RemoteFolder"
+            }
+        catch {
+            Write-Log "не удалось создать папку ${RemoteFolder}: $($_.Exception.Message)"
+        throw
+                }
+            }
 
         # поиск последнего файла
         $latestFile = Get-ChildItem -Path $SourceFolder -File |
@@ -105,6 +117,7 @@ while ($true) {
         Write-Log "передача завершена"
     }
 
+    # Ожидание 7 дней
     Write-Log "ожидание 7 дней до следующего запуска..."
     Start-Sleep -Seconds 604800 # 7days
 }
