@@ -137,6 +137,21 @@ if ($Mode -eq "simple") {
             New-SFTPItem -SessionId $sftpSession.SessionId -Path $remoteFolder -ItemType Directory | Out-Null
         }
 
+        $maxAttempts = 10
+        $attempt = 0
+        $waitSeconds = 30
+
+        while (Test-FileLocked $latestFile.FullName -and $attempt -lt $maxAttempts) {
+    Write-Log "файл занят другим процессом. Ожидание $waitSeconds сек... (попытка $($attempt+1) из $maxAttempts)"
+    Start-Sleep -Seconds $waitSeconds
+    $attempt++
+        }
+
+        if (Test-FileLocked $latestFile.FullName) {
+        Write-Log "файл так и не освободился. Пропускаю: $($latestFile.Name)"
+        continue
+        }
+
         # отправка файла
         try {
             Set-SFTPItem -SessionId $sftpSession.SessionId `
@@ -178,6 +193,20 @@ else {
 
             $fileSizeKB = [math]::Round($latestFile.Length / 1KB, 2)
             Write-Log "последний файл: $($latestFile.Name) ($fileSizeKB KB)"
+            $maxAttempts = 10
+            $attempt = 0
+            $waitSeconds = 30
+
+            while (Test-FileLocked $latestFile.FullName -and $attempt -lt $maxAttempts) {
+            Write-Log "файл занят другим процессом. Ожидание $waitSeconds сек... (попытка $($attempt+1) из $maxAttempts)"
+            Start-Sleep -Seconds $waitSeconds
+            $attempt++
+            }
+
+            if (Test-FileLocked $latestFile.FullName) {
+            Write-Log "файл так и не освободился. Пропускаю: $($latestFile.Name)"
+            continue
+            }
 
             $remoteFolder = "$RemoteRoot/$($SubFolder.Name)"
 
