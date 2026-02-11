@@ -9,7 +9,7 @@ try {
 
 # config 
 $XpenologyIP = ""
-$Port = 33878
+$Port = 
 $Username = Read-Host "Введите имя пользователя для SFTP"
 $Password = Read-Host "Введите пароль для SFTP" -AsSecureString
 
@@ -52,6 +52,18 @@ function Write-Log {
     $logMessage = "$timestamp - $Message"
     Add-Content -Path $LogFile -Value $logMessage
     Write-Host $logMessage
+}
+function Test-FileLocked {
+    param([string]$Path)
+
+    try {
+        $stream = [System.IO.File]::Open($Path, 'Open', 'Read', 'None')
+        $stream.Close()
+        return $false
+    }
+    catch {
+        return $true
+    }
 }
 
 # main_loop
