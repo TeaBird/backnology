@@ -1,5 +1,5 @@
-# backnology <img width="40" height="40" alt="dura_seagull" src="https://github.com/user-attachments/assets/61ce4fdb-c717-4570-b4e3-679aaefe6e5a" />
-
+<img width="40" height="40" alt="dura_seagull" src="https://github.com/user-attachments/assets/61ce4fdb-c717-4570-b4e3-679aaefe6e5a" />
+# backnology 
 **Posh-SSH + Xpenology + Backup Script**
 
 Скрипт для автоматической отправки резервных копий на удалённый хост по SFTP через модуль Posh-SSH.
