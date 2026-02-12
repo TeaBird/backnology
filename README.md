@@ -23,7 +23,14 @@
 
 ##  Конфигурация
 
+```powershell
 Основные параметры:
+# Вводим пароль
+$Password = Read-Host "Введите пароль SFTP" -AsSecureString
+
+# Сохраняем зашифрованный пароль в файл
+$Password | ConvertFrom-SecureString | Set-Content "C:\backnology\sftp_pass.txt"
+```
 
 ```powershell
 # Paths
