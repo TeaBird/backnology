@@ -23,8 +23,9 @@
 
 ##  Конфигурация
 
-```powershell
 Основные параметры:
+
+```powershell
 # Вводим пароль
 $Password = Read-Host "Введите пароль SFTP" -AsSecureString
 
